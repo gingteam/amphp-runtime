@@ -19,7 +19,8 @@
         "symfony/runtime": "^6.0",
         "amphp/cluster": "^1.0",
         "symfony/http-kernel": "^6.0",
-        "amphp/http-server": "^2.1"
+        "amphp/http-server": "^2.1",
+        "amphp/http-server-static-content": "dev-master"
     },
     "config": {
         "allow-plugins": {

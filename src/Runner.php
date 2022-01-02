@@ -10,12 +10,14 @@ use Amp\Http\Server\HttpServer;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestHandler\CallableRequestHandler;
 use Amp\Http\Server\Response;
+use Amp\Http\Server\StaticContent\DocumentRoot;
 use Amp\Log\ConsoleFormatter;
 use Amp\Log\StreamHandler;
 use Amp\Loop;
 use Monolog\Logger;
 use Symfony\Component\HttpFoundation\Request as SymfonyRequest;
 use Symfony\Component\HttpKernel\HttpKernelInterface;
+use Symfony\Component\HttpKernel\TerminableInterface;
 use Symfony\Component\Runtime\RunnerInterface;
 
 class Runner implements RunnerInterface
@@ -31,8 +33,8 @@ class Runner implements RunnerInterface
     {
         Loop::run(function () {
             $sockets = yield [
-                Cluster::listen('0.0.0.0:8080'),
-                Cluster::listen('[::]:8080'),
+                Cluster::listen('0.0.0.0:8000'),
+                Cluster::listen('[::]:8000'),
             ];
 
             if (Cluster::isWorker()) {
@@ -45,39 +47,52 @@ class Runner implements RunnerInterface
             $logger = new Logger('worker-'.Cluster::getId());
             $logger->pushHandler($handler);
 
-            $httpServer = new HttpServer($sockets, new CallableRequestHandler(function (Request $request) {
-                $query = $post = $cookies = [];
-                $rawBody = yield $request->getBody()->buffer();
+            $documentRoot = new DocumentRoot(getcwd());
+            $documentRoot->setFallback(new CallableRequestHandler([$this, 'handle']));
 
-                parse_str($request->getUri()->getQuery(), $query);
-                parse_str($rawBody, $post);
-                foreach ($request->getCookies() as $cookie) {
-                    $cookies[$cookie->getName()] = $cookie->getValue();
-                }
-
-                $sfRequest = new SymfonyRequest(
-                    $query,
-                    $post,
-                    [],
-                    $cookies,
-                    [], // not support files =((
-                    static::prepareForServer($request),
-                    $rawBody
-                );
-
-                $sfResponse = $this->kernel->handle($sfRequest);
-
-                return new Response(
-                    $sfResponse->getStatusCode(),
-                    $sfResponse->headers->all(),
-                    $sfResponse->getContent()
-                );
-            }), $logger);
+            $httpServer = new HttpServer($sockets, $documentRoot, $logger);
 
             yield $httpServer->start();
         });
 
         return 0;
+    }
+
+    public function handle(Request $request)
+    {
+        $query   = $post   = $cookies   = [];
+        $rawBody = yield $request->getBody()->buffer();
+
+        parse_str($request->getUri()->getQuery(), $query);
+        parse_str($rawBody, $post);
+
+        foreach ($request->getCookies() as $cookie) {
+            $cookies[$cookie->getName()] = $cookie->getValue();
+        }
+
+        $sfRequest = new SymfonyRequest(
+            $query,
+            $post,
+            [],
+            $cookies,
+            [], // not support files =((
+            static::prepareForServer($request),
+            $rawBody
+        );
+
+        $sfResponse = $this->kernel->handle($sfRequest);
+
+        try {
+            return new Response(
+                $sfResponse->getStatusCode(),
+                $sfResponse->headers->all(),
+                $sfResponse->getContent()
+            );
+        } finally {
+            if ($this->kernel instanceof TerminableInterface) {
+                $this->kernel->terminate($sfRequest, $sfResponse);
+            }
+        }
     }
 
     public static function prepareForServer(Request $request)
