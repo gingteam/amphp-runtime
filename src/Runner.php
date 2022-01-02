@@ -5,7 +5,10 @@ declare(strict_types=1);
 namespace GingTeam\AmphpRuntime;
 
 use function Amp\ByteStream\getStdout;
+use function Amp\Http\Server\FormParser\parseForm;
+
 use Amp\Cluster\Cluster;
+use Amp\Http\Server\FormParser\Form;
 use Amp\Http\Server\HttpServer;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestHandler\CallableRequestHandler;
@@ -60,24 +63,17 @@ class Runner implements RunnerInterface
 
     public function handle(Request $request)
     {
-        $query   = $post   = $cookies   = [];
-        $rawBody = yield $request->getBody()->buffer();
+        /** @var Form $form */
+        $form = yield parseForm($request);
 
-        parse_str($request->getUri()->getQuery(), $query);
-        parse_str($rawBody, $post);
-
-        foreach ($request->getCookies() as $cookie) {
-            $cookies[$cookie->getName()] = $cookie->getValue();
-        }
-
-        $sfRequest = new SymfonyRequest(
-            $query,
-            $post,
+        $sfRequest = SymfonyRequest::create(
+            (string) $request->getUri(),
+            $request->getMethod(),
+            $form->getValues(),
+            $request->getHeaderArray('cookie'),
             [],
-            $cookies,
-            [], // not support files =((
             static::prepareForServer($request),
-            $rawBody
+            yield $request->getBody()->buffer()
         );
 
         $sfResponse = $this->kernel->handle($sfRequest);
@@ -100,13 +96,10 @@ class Runner implements RunnerInterface
         $client = $request->getClient()->getRemoteAddress();
 
         $server = [
-            'REQUEST_URI'     => (string) $request->getUri(),
-            'REQUEST_METHOD'  => $request->getMethod(),
             'REMOTE_ADDR'     => $client->getHost(),
             'REMOTE_PORT'     => $client->getPort(),
-            'HTTP_USER_AGENT' => '',
-            'SERVER_PROTOCOL' => $request->getProtocolVersion(),
-            'SERVER_SOFTWARE' => 'AmpHttp',
+            'SERVER_PROTOCOL' => 'HTTP/'.$request->getProtocolVersion(),
+            'SERVER_SOFTWARE' => 'Amphp HTTP Server',
         ];
 
         foreach ($request->getHeaders() as $key => $value) {

@@ -17,9 +17,10 @@
     "minimum-stability": "stable",
     "require": {
         "symfony/runtime": "^6.0",
-        "amphp/cluster": "^1.0",
         "symfony/http-kernel": "^6.0",
+        "amphp/cluster": "^1.0",
         "amphp/http-server": "^2.1",
+        "amphp/http-server-form-parser": "^1.1",
         "amphp/http-server-static-content": "dev-master"
     },
     "config": {
