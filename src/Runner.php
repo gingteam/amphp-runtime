@@ -5,10 +5,9 @@ declare(strict_types=1);
 namespace GingTeam\AmphpRuntime;
 
 use function Amp\ByteStream\getStdout;
-use function Amp\Http\Server\FormParser\parseForm;
-
 use Amp\Cluster\Cluster;
 use Amp\Http\Server\FormParser\Form;
+use function Amp\Http\Server\FormParser\parseForm;
 use Amp\Http\Server\HttpServer;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestHandler\CallableRequestHandler;
@@ -17,6 +16,7 @@ use Amp\Http\Server\StaticContent\DocumentRoot;
 use Amp\Log\ConsoleFormatter;
 use Amp\Log\StreamHandler;
 use Amp\Loop;
+use Amp\Promise;
 use Monolog\Logger;
 use Symfony\Component\HttpFoundation\Request as SymfonyRequest;
 use Symfony\Component\HttpKernel\HttpKernelInterface;
@@ -56,6 +56,10 @@ class Runner implements RunnerInterface
             $httpServer = new HttpServer($sockets, $documentRoot, $logger);
 
             yield $httpServer->start();
+
+            Cluster::onTerminate(function () use ($httpServer): Promise {
+                return $httpServer->stop();
+            });
         });
 
         return 0;
@@ -64,13 +68,25 @@ class Runner implements RunnerInterface
     public function handle(Request $request)
     {
         /** @var Form $form */
-        $form = yield parseForm($request);
+        $form       = yield parseForm($request);
+        $parameters = $form->getValues();
+
+        array_walk(
+            $parameters,
+            fn (&$item, $_) => $item = 1 === \count($item) ? $item[0] : $item
+        );
+
+        unset($parameters['']);
+
+        $cookies = $request->getCookies();
+        // Convert $cookies to [['key' => 'value']...]
+        array_walk($cookies, fn (&$item, $_) => $item = $item->getValue());
 
         $sfRequest = SymfonyRequest::create(
             (string) $request->getUri(),
             $request->getMethod(),
-            $form->getValues(),
-            $request->getHeaderArray('cookie'),
+            $parameters,
+            $cookies,
             [],
             static::prepareForServer($request),
             yield $request->getBody()->buffer()
