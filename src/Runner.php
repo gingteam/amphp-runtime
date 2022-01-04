@@ -6,9 +6,9 @@ namespace GingTeam\AmphpRuntime;
 
 use function Amp\ByteStream\getStdout;
 use Amp\Cluster\Cluster;
-use Amp\Http\Server\FormParser\Form;
-use function Amp\Http\Server\FormParser\parseForm;
+use Amp\Http\Server\FormParser\ParsingMiddleware;
 use Amp\Http\Server\HttpServer;
+use function Amp\Http\Server\Middleware\stack;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestHandler\CallableRequestHandler;
 use Amp\Http\Server\Response;
@@ -51,7 +51,14 @@ class Runner implements RunnerInterface
             $logger->pushHandler($handler);
 
             $documentRoot = new DocumentRoot(getcwd());
-            $documentRoot->setFallback(new CallableRequestHandler([$this, 'handle']));
+
+            $handler = stack(
+                new CallableRequestHandler([$this, 'handle']),
+                new ParsingMiddleware(),
+                new SymfonyMiddleware()
+            );
+
+            $documentRoot->setFallback($handler);
 
             $httpServer = new HttpServer($sockets, $documentRoot, $logger);
 
@@ -67,25 +74,11 @@ class Runner implements RunnerInterface
 
     public function handle(Request $request)
     {
-        /** @var Form $form */
-        $form       = yield parseForm($request);
-        $parameters = $form->getValues();
-        unset($parameters['']);
-
-        array_walk(
-            $parameters,
-            fn (&$item, $_) => $item = 1 === \count($item) ? $item[0] : $item
-        );
-
-        $cookies = $request->getCookies();
-        // Convert $cookies to [['key' => 'value']...]
-        array_walk($cookies, fn (&$item, $_) => $item = $item->getValue());
-
         $sfRequest = SymfonyRequest::create(
             (string) $request->getUri(),
             $request->getMethod(),
-            $parameters,
-            $cookies,
+            $request->getAttribute('parameters'),
+            $request->getAttribute('cookies'),
             [],
             static::prepareForServer($request),
             yield $request->getBody()->buffer()
