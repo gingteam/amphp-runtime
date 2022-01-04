@@ -22,7 +22,8 @@
         "amphp/http-server": "^2.1",
         "amphp/http-server-static-content": "dev-master",
         "react/http": "^1.5",
-        "symfony/psr-http-message-bridge": "^2.1"
+        "symfony/psr-http-message-bridge": "^2.1",
+        "amphp/react-adapter": "^2.1"
     },
     "config": {
         "allow-plugins": {
