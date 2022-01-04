@@ -70,13 +70,12 @@ class Runner implements RunnerInterface
         /** @var Form $form */
         $form       = yield parseForm($request);
         $parameters = $form->getValues();
+        unset($parameters['']);
 
         array_walk(
             $parameters,
             fn (&$item, $_) => $item = 1 === \count($item) ? $item[0] : $item
         );
-
-        unset($parameters['']);
 
         $cookies = $request->getCookies();
         // Convert $cookies to [['key' => 'value']...]
