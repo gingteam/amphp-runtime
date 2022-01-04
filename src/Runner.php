@@ -6,7 +6,6 @@ namespace GingTeam\AmphpRuntime;
 
 use function Amp\ByteStream\getStdout;
 use Amp\Cluster\Cluster;
-use Amp\Http\Server\FormParser\ParsingMiddleware;
 use Amp\Http\Server\HttpServer;
 use function Amp\Http\Server\Middleware\stack;
 use Amp\Http\Server\Request;
@@ -18,7 +17,8 @@ use Amp\Log\StreamHandler;
 use Amp\Loop;
 use Amp\Promise;
 use Monolog\Logger;
-use Symfony\Component\HttpFoundation\Request as SymfonyRequest;
+use Psr\Http\Message\ServerRequestInterface;
+use Symfony\Bridge\PsrHttpMessage\Factory\HttpFoundationFactory;
 use Symfony\Component\HttpKernel\HttpKernelInterface;
 use Symfony\Component\HttpKernel\TerminableInterface;
 use Symfony\Component\Runtime\RunnerInterface;
@@ -27,9 +27,12 @@ class Runner implements RunnerInterface
 {
     private $kernel;
 
+    private $httpFoundationFactory;
+
     public function __construct(HttpKernelInterface $kernel)
     {
-        $this->kernel = $kernel;
+        $this->kernel                = $kernel;
+        $this->httpFoundationFactory = new HttpFoundationFactory();
     }
 
     public function run(): int
@@ -54,8 +57,7 @@ class Runner implements RunnerInterface
 
             $handler = stack(
                 new CallableRequestHandler([$this, 'handle']),
-                new ParsingMiddleware(),
-                new SymfonyMiddleware()
+                new PsrMiddleware(),
             );
 
             $documentRoot->setFallback($handler);
@@ -74,15 +76,10 @@ class Runner implements RunnerInterface
 
     public function handle(Request $request)
     {
-        $sfRequest = SymfonyRequest::create(
-            (string) $request->getUri(),
-            $request->getMethod(),
-            $request->getAttribute('parameters'),
-            $request->getAttribute('cookies'),
-            [],
-            static::prepareForServer($request),
-            yield $request->getBody()->buffer()
-        );
+        $sfRequest = $this->httpFoundationFactory
+            ->createRequest(
+                $request->getAttribute(ServerRequestInterface::class)
+            );
 
         $sfResponse = $this->kernel->handle($sfRequest);
 
@@ -97,28 +94,5 @@ class Runner implements RunnerInterface
                 $this->kernel->terminate($sfRequest, $sfResponse);
             }
         }
-    }
-
-    public static function prepareForServer(Request $request)
-    {
-        $client = $request->getClient()->getRemoteAddress();
-
-        $server = [
-            'REMOTE_ADDR'     => $client->getHost(),
-            'REMOTE_PORT'     => $client->getPort(),
-            'SERVER_PROTOCOL' => 'HTTP/'.$request->getProtocolVersion(),
-            'SERVER_SOFTWARE' => 'Amphp HTTP Server',
-        ];
-
-        foreach ($request->getHeaders() as $key => $value) {
-            $key = \strtoupper(\str_replace('-', '_', (string) $key));
-            if (\in_array($key, ['CONTENT_TYPE', 'CONTENT_LENGTH'])) {
-                $server[$key] = \implode(', ', $value);
-            } else {
-                $server['HTTP_'.$key] = \implode(', ', $value);
-            }
-        }
-
-        return \array_merge($server, $_SERVER);
     }
 }
