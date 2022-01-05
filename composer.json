@@ -1,0 +1,33 @@
+{
+    "name": "gingteam/amphp-runtime",
+    "description": "amphp runtime for symfony",
+    "type": "library",
+    "license": "MIT",
+    "autoload": {
+        "psr-4": {
+            "GingTeam\\AmphpRuntime\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "ging-dev",
+            "email": "thanh1101dev@gmail.com"
+        }
+    ],
+    "minimum-stability": "stable",
+    "require": {
+        "symfony/runtime": "^6.0",
+        "symfony/http-kernel": "^6.0",
+        "amphp/cluster": "^1.0",
+        "amphp/http-server": "^2.1",
+        "amphp/http-server-static-content": "dev-master",
+        "react/http": "^1.5",
+        "symfony/psr-http-message-bridge": "^2.1",
+        "amphp/react-adapter": "^2.1"
+    },
+    "config": {
+        "allow-plugins": {
+            "symfony/runtime": true
+        }
+    }
+}
