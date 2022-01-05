@@ -20,8 +20,10 @@ use Amp\Log\StreamHandler;
 use Amp\Loop;
 use Amp\Producer;
 use Amp\Promise;
+use Amp\ReactAdapter\ReactAdapter;
 use Monolog\Logger;
 use Psr\Http\Message\ServerRequestInterface;
+use React\EventLoop\Loop as ReactLoop;
 use Symfony\Bridge\PsrHttpMessage\Factory\HttpFoundationFactory;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -43,11 +45,9 @@ class Runner implements RunnerInterface
 
     public function run(): int
     {
+        ReactLoop::set(ReactAdapter::get());
         Loop::run(function () {
-            $sockets = yield [
-                Cluster::listen('0.0.0.0:8000'),
-                Cluster::listen('[::]:8000'),
-            ];
+            $sockets = yield Cluster::listen('0.0.0.0:8000');
 
             if (Cluster::isWorker()) {
                 $handler = Cluster::createLogHandler();

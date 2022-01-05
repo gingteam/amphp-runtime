@@ -18,13 +18,19 @@ class PsrMiddleware implements Middleware
     public function handleRequest(Request $request, RequestHandler $requestHandler): Promise
     {
         return call(function () use ($request, $requestHandler) {
+            $client = $request->getClient()->getRemoteAddress();
+            $severParams = [
+                'REMOTE_ADDR' => $client->getHost(),
+                'REMOTE_PORT' => $client->getPort(),
+            ];
+
             $serverRequest = new ServerRequest(
                 $request->getMethod(),
                 (string) $request->getUri(),
                 $request->getHeaders(),
                 yield $request->getBody()->buffer(),
                 $request->getProtocolVersion(),
-                $this->prepareForServer($request)
+                $severParams + $_SERVER
             );
 
             $next = function (ServerRequestInterface $psrRequest) use ($request) {
@@ -35,28 +41,5 @@ class PsrMiddleware implements Middleware
 
             return yield $requestHandler->handleRequest($request);
         });
-    }
-
-    public function prepareForServer(Request $request): array
-    {
-        $client = $request->getClient()->getRemoteAddress();
-
-        $server = [
-            'REMOTE_ADDR'     => $client->getHost(),
-            'REMOTE_PORT'     => $client->getPort(),
-            'SERVER_PROTOCOL' => 'HTTP/'.$request->getProtocolVersion(),
-            'SERVER_SOFTWARE' => 'Amphp HTTP Server',
-        ];
-
-        foreach ($request->getHeaders() as $key => $value) {
-            $key = \strtoupper(\str_replace('-', '_', (string) $key));
-            if (\in_array($key, ['CONTENT_TYPE', 'CONTENT_LENGTH'])) {
-                $server[$key] = \implode(', ', $value);
-            } else {
-                $server['HTTP_'.$key] = \implode(', ', $value);
-            }
-        }
-
-        return \array_merge($server, $_SERVER);
     }
 }
