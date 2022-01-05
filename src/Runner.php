@@ -5,8 +5,11 @@ declare(strict_types=1);
 namespace GingTeam\AmphpRuntime;
 
 use function Amp\ByteStream\getStdout;
+use Amp\ByteStream\IteratorStream;
 use Amp\Cluster\Cluster;
 use Amp\Http\Server\HttpServer;
+use Amp\Http\Server\Options;
+
 use function Amp\Http\Server\Middleware\stack;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestHandler\CallableRequestHandler;
@@ -15,10 +18,13 @@ use Amp\Http\Server\StaticContent\DocumentRoot;
 use Amp\Log\ConsoleFormatter;
 use Amp\Log\StreamHandler;
 use Amp\Loop;
+use Amp\Producer;
 use Amp\Promise;
 use Monolog\Logger;
 use Psr\Http\Message\ServerRequestInterface;
 use Symfony\Bridge\PsrHttpMessage\Factory\HttpFoundationFactory;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 use Symfony\Component\HttpKernel\HttpKernelInterface;
 use Symfony\Component\HttpKernel\TerminableInterface;
 use Symfony\Component\Runtime\RunnerInterface;
@@ -62,7 +68,7 @@ class Runner implements RunnerInterface
 
             $documentRoot->setFallback($handler);
 
-            $httpServer = new HttpServer($sockets, $documentRoot, $logger);
+            $httpServer = new HttpServer($sockets, $documentRoot, $logger, (new Options())->withCompression());
 
             yield $httpServer->start();
 
@@ -84,11 +90,30 @@ class Runner implements RunnerInterface
         $sfResponse = $this->kernel->handle($sfRequest);
 
         try {
-            return new Response(
+            $response = new Response(
                 $sfResponse->getStatusCode(),
-                $sfResponse->headers->all(),
-                $sfResponse->getContent()
+                $sfResponse->headers->all()
             );
+
+            if ($sfResponse instanceof StreamedResponse || $sfResponse instanceof BinaryFileResponse) {
+                $response->setBody(
+                    new IteratorStream(
+                        new Producer(function (callable $emit) use ($sfResponse) {
+                            ob_start(function ($buffer) use ($emit) {
+                                yield $emit($buffer);
+
+                                return '';
+                            });
+                            $sfResponse->sendContent();
+                            ob_end_clean();
+                        })
+                    )
+                );
+            } else {
+                $response->setBody($sfResponse->getContent());
+            }
+
+            return $response;
         } finally {
             if ($this->kernel instanceof TerminableInterface) {
                 $this->kernel->terminate($sfRequest, $sfResponse);
