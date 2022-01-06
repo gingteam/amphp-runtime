@@ -23,6 +23,7 @@ use Amp\ReactAdapter\ReactAdapter;
 use Monolog\Logger;
 use Psr\Http\Message\ServerRequestInterface;
 use React\EventLoop\Loop as ReactLoop;
+use React\Http\Io\IniUtil;
 use Symfony\Bridge\PsrHttpMessage\Factory\HttpFoundationFactory;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -72,11 +73,14 @@ class Runner implements RunnerInterface
 
             $documentRoot->setFallback($handler);
 
+            $sizeLimit = \ini_get('post_max_size');
             $httpServer = new HttpServer(
                 [$socket],
                 $documentRoot,
                 $logger,
-                (new Options())->withCompression()
+                (new Options())
+                    ->withoutCompression()
+                    ->withBodySizeLimit(IniUtil::iniSizeToBytes($sizeLimit))
             );
 
             yield $httpServer->start();

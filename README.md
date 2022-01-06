@@ -11,11 +11,13 @@ $app = function (array $context) {
     return new Kernel($context['APP_ENV'], (bool) $context['APP_DEBUG']);
 };
 
-$runtime = new Runtime([
+$options = [
     'project_dir' => dirname(__DIR__, 1),
     'document_root' => __DIR__,
     'port' => 8000,
-]);
+];
+
+$runtime = new Runtime($options);
 
 [$app, $args] = $runtime->getResolver($app)->resolve();
 
